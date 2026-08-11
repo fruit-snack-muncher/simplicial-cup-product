@@ -12,11 +12,18 @@ Contains a number of classes to :
 3. Compute the simplicial homology over `Z` and `Z_p`, and
    cohomology over `Z_p.` 
 
-AI USAGE:
+AI USAGE (Claude, via Claude Code):
 1. Non-structural bugs, docstrings
 2. Citations
 3. Creating + using test suite
 4. Credits
+5. Three defects in `_cycle_reps` (`simp_homology.py`), found by writing its
+   test suite and then fixed: an unbound `sieve` in the top dimension, a live
+   `dict.keys()` view that discarded every representative, and a cycle basis
+   read off `Matrix.nullspace`, which stays over `Q` and so missed the mod 2
+   fundamental classes of `RP^2` and the Klein bottle.
+6. Sourcing the 9-vertex `CP^2` used in the tests, and checking its f-vector,
+   Euler characteristic, ridge degrees and integral homology before use.
 
 ## References ##
 
@@ -26,6 +33,11 @@ torsion coefficients as the non-unit elementary divisors — follows:
 
 - Omar Antolín Camarena, *Using the Smith normal form to compute homology*,
   <https://www.matem.unam.mx/~omar/mathX27/smith-form.html>
+
+The vertex-minimal `CP^2` triangulated in `tests/test_simp_homology.py` is due to:
+
+- Wolfgang Kühnel and Thomas F. Banchoff, *The 9-vertex complex projective
+  plane*, The Mathematical Intelligencer **5** (1983), 11–22.
 
 ## Credits ##
 

@@ -52,6 +52,16 @@ class SimplicialComplex:
             # all dimension d simplices
             d_simplices = list(self.simplices[d])
             self.sorted_simplices[d] = sorted(d_simplices, key = lambda l: tuple(self._order_lookup[p] for p in l))
+
+    def d_simplices(self, d: int) -> set:
+        if d >= 0 and d <= self.dim:
+            return self.simplices[d]
+        raise ValueError('Dimension d must be nonnegative and at most the dimension of the complex.')
+
+    def d_sorted_simplices(self, d: int) -> set:
+            if d >= 0 and d <= self.dim:
+                return self.sorted_simplices[d]
+            raise ValueError('Dimension d must be nonnegative and at most the dimension of the complex.')
     
     # adds a simplex to the simplicial complex, along with all its faces.
     def add_simplex(self, *simplices) -> None:

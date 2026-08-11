@@ -1,6 +1,7 @@
 from simplicial_cup_product.chain_complex import ChainComplex
 from simplicial_cup_product.simplicial_complex import SimplicialComplex
 import numpy as np
+import itertools
 from sympy import Matrix, ZZ, GF, isprime, symbols
 from sympy.matrices.normalforms import smith_normal_form
 from sympy.polys.matrices import DomainMatrix
@@ -39,8 +40,9 @@ class SimpHomology:
         coeff_ring = ZZ
         if self.p:
             self._p_prime()
+            coeff_ring = GF(self.p)
         
-        C = ChainComplex(K)
+        C = ChainComplex(self.K)
         m = C.d_rank(d)
 
         r, _ = self._rank_and_divisors(C.d_boundary_matrix(d), coeff_ring)
@@ -59,37 +61,148 @@ class SimpHomology:
 
         return self.d_homology(d)[0]
 
-    # finds the cokernel of a LT, via the nullspace of the transpose of its matrix. 
-    # works since the orthogonal complement of a matrix (where the spanned space is
-    # isomorphic to the cokernel) with the nullspace of A^T.
-    # requires p prime.
-    def _matrix_cokernel(self, M: Matrix) -> tuple:
+    # returns the multiplicative inverse of x, mod self.p
+    def _rem(self, x:int) -> int:
+        if x % self.p == 0:
+            pass
+        for i in range(1, self.p):
+            if (i * x) % self.p == 1:
+                return i
+
+    # obtains an np.array, finds the first nonzero coordinate, scales the
+    # array to normalize the first nonzero position, and returns the scaled array
+    # and the index of the first nonzero position.
+    # returns (-2, n) if n is all zeros... due to implementation using an iterator.
+    def _scale(self, n: np.array) -> tuple[int, np.array]:
+        mod_n = np.mod(n, self.p)
+        if not np.any(mod_n):
+            return (-2, mod_n) # :3
+
+        lt_idx = int( np.nonzero(n)[0][0] )
+        lt = int( n[lt_idx] )
+        lt_inv = self._rem(lt)
+        return lt_idx, np.mod(lt_inv * n, self.p)
+    
+    # returns a basis for the image of the boundary matrix as a dict, where the leading
+    # term of each basis vector is one. 
+    # keys are the indices of the leading terms, and values are the associated vector.
+    def _sieve_basis(self, d: int, cocycles: bool = False) -> dict:
         self._p_prime()
 
-        M_T = DomainMatrix.from_Matrix(M).convert_to(GF(self.p))
-        M_T = M_T.transpose()
-        return M_T.nullspace()
+        if cocycles:
+            M = self.C.d_coboundary_matrix(d)
+        else:
+            M = self.C.d_boundary_matrix(d)
 
-    # finds explicit representatives for the d-homology group. requires working over Z_p.
-    def _cycle_reps(self, d: int) -> tuple[int]:
+        boundaries = tuple( boundary for boundary in M.transpose() )
+        basis = {}
+
+        for boundary in boundaries:
+            idx, scaled = self._scale(boundary)
+
+            # add elements: passes the first boundary in for free.
+            if not basis:
+                basis[idx] = scaled
+                continue
+
+            # runs each boundary against a sieve of boundary vectors, with at most corresponding
+            # to each possible leading term position. we run the boundary by removing leading
+            # terms from left to right.
+            pivots = sorted(basis.keys())
+            iter = 0
+
+            while iter >= 0 and idx in pivots and iter < len(pivots):
+                pivot = pivots[iter]
+                if scaled[pivot] != 0:
+                    idx, scaled = self._scale(scaled - basis[pivot])
+                iter += 1
+
+            basis[idx] = scaled
+
+        return {key : value for key, value in basis.items() if key >= 0}
+
+    # given a type of dictionary as produced by _image_basis -- a dictionary
+    # with (pivot index, pivot vector) where pivots are unique -- runs a vector 
+    # through the dictionary vectors in order of the position of their LT, and 
+    # updates the dictionary only if the vector survives.
+    def _cycle_sieve(self, cycles: dict, cycle: np.array) -> dict:
+        idx, scaled = self._scale(cycle)
+        pivots = sorted(cycles.keys())
+        iter = 0
+
+        while iter >= 0 and idx in pivots and iter<len(pivots):
+            pivot = pivots[iter]
+            if scaled[pivot] != 0:
+                idx, scaled = self._scale(scaled - cycles[pivot])
+            iter += 1
+
+        if idx >= 0:
+            cycles[idx] = scaled
+
+        return cycles
+
+    
+    # finds explicit cycle representatives for the d-homology group. requires working over Z_p.
+    # keys are the indices of the leading terms, as in _sieve_basis; there is one entry per
+    # generator of H_d(K; Z_p).
+    def cycle_reps(self, d: int) -> dict:
         self._p_prime()
 
-        
+        sieve = self._sieve_basis(d+1) if d < self.K.dim else {}
+        pivots = frozenset(sieve)
 
+        # a basis for the cycles Z_d, taken over Z_p. 
+        boundary_M = DomainMatrix.from_Matrix(Matrix(self.C.d_boundary_matrix(d))).convert_to(GF(self.p))
+        cycle_basis = tuple( np.array([int(entry) % self.p for entry in row]) for row in boundary_M.nullspace().to_list() )
+        cycle_basis = tuple( self._scale(cycle)[1] for cycle in cycle_basis )
 
+        for cycle in cycle_basis:
+            sieve = self._cycle_sieve(sieve, cycle)
 
+        # boundaries already have taken unique pivots.
+        cycle_reps = {key: value for key, value in sieve.items() if key not in pivots}
 
+        return cycle_reps
 
-        
+    # finds explicit cocycle representatives for the d-homology group. requires working over Z_p.
+    # keys are the indices of the leading terms, as in _sieve_basis; there is one entry per
+    # generator of H^d(K; Z_p).
+    def cocycle_reps(self, d: int) -> dict:
+        self._p_prime()
+
+        sieve = self._sieve_basis(d-1, cocycles=True) if d > 0 else {}
+        pivots = frozenset(sieve)
+
+        # a basis for the cycles Z_d, taken over Z_p. 
+        boundary_M = DomainMatrix.from_Matrix(Matrix(self.C.d_coboundary_matrix(d))).convert_to(GF(self.p))
+        cycle_basis = tuple( np.array([int(entry) % self.p for entry in row]) for row in boundary_M.nullspace().to_list() )
+        cycle_basis = tuple( self._scale(cycle)[1] for cycle in cycle_basis )
+
+        for cycle in cycle_basis:
+            sieve = self._cycle_sieve(sieve, cycle)
+
+        # boundaries already have taken unique pivots.
+        cycle_reps = {key: value for key, value in sieve.items() if key not in pivots}
+
+        return cycle_reps
 
 
 if __name__ == "__main__":
     K = SimplicialComplex((0, 1, 3), (1, 2, 4), (2, 3, 5), (3, 4, 6), (4, 5, 0), 
          (5, 6, 1), (6, 0, 2), (0, 2, 3), (1, 3, 4), (2, 4, 5), 
          (3, 5, 6), (4, 6, 0), (5, 0, 1), (6, 1, 2))
+    KK = SimplicialComplex((1, 2, 5), (1, 2, 6), (1, 3, 4), (1, 3, 6), (1, 4, 5),
+       (2, 3, 4), (2, 3, 5), (2, 4, 6), (3, 5, 6), (4, 5, 6))
     C = ChainComplex(K)
-    H = SimpHomology(K, 2)
+    H = SimpHomology(K, 5)
+    CC = ChainComplex(KK)
+    HH = SimpHomology(KK, 2)
+    M = np.array([[1,2,3],
+                  [1,2,3],
+                  [1,2,3]])
 
-    print(H._matrix_cokernel(Matrix(C.d_boundary_matrix(2))))
+    test = SimplicialComplex((0,1,2,3))
 
-    
+    testH = SimpHomology(test, 3)
+
+    print(testH._cycle_reps(2))
