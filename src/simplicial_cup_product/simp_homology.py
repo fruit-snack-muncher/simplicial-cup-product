@@ -16,9 +16,12 @@ class SimpHomology:
         if not self.p or not isprime(self.p):
             raise ValueError('p in SimpHomology initialization must be a prime.')
 
-    # the rank of a boundary matrix over the coefficient ring, together with the
-    # elementary divisors of its SNF (the units dropped, as they contribute no torsion).
     def _rank_and_divisors(self, boundary_matrix, coeff_ring) -> tuple[int, tuple]:
+        """The rank over coeff_ring, with the torsion elementary divisors of the SNF.
+
+        Units are dropped, contributing no torsion; over a field there is none at all and
+        the second entry is empty.
+        """
         M = Matrix(boundary_matrix)
 
         if coeff_ring.is_Field:
@@ -29,14 +32,14 @@ class SimpHomology:
         divisors = tuple(snf[i, i] for i in range(0, min(snf.shape)) if snf[i, i] not in {0, 1, -1})
         return snf.rank(), divisors
 
-    # use the SNF on d-boundary matrices to compute homology over Z. broken into betti 
-    # numbers and torsion numbers. uses sympy, as SNF is not implemented as a part of 
-    # the numpy library. formula via Omar Antolin Camarena, "Using the Smith normal form
-    # to compute homology" (https://www.matem.unam.mx/~omar/mathX27/smith-form.html)
+    def d_homology(self, d: int) -> tuple[int, tuple]:
+        """H_d(K) as (betti number, torsion coefficients), over Z or over GF(p).
 
-    # ZZmod = 0 means integer coefficients; a positive prime p means coefficients in GF(p),
-    # where the field has no torsion and the second entry is always empty.
-    def d_homology(self, d: int) -> tuple[int, tuple]: # b_d, and torsion coefficients in a tuple. no torsion -> empty tuple.
+        Both are read off the Smith normal forms of the d- and (d+1)-boundary matrices,
+        following Omar Antolin Camarena, "Using the Smith normal form to compute
+        homology". SymPy does the work, as NumPy has no SNF. p = 0 means integer
+        coefficients; over GF(p) there is no torsion, so the tuple is always empty.
+        """
         coeff_ring = ZZ
         if self.p:
             self._p_prime()
@@ -54,39 +57,48 @@ class SimpHomology:
 
         return (m-r, tuple())
 
-    # by the UCT. rather uninteresting, as we are always working over Z_p. 
-    # returns rank of cohomology group over field Z_p.
     def d_cohomology(self, d: int) -> tuple[int]:
+        """dim H^d(K; Z_p), which the UCT makes equal to dim H_d over a field."""
         self._p_prime()
 
         return self.d_homology(d)[0]
 
-    # returns the multiplicative inverse of x, mod self.p
     def _rem(self, x:int) -> int:
+        """The multiplicative inverse of x mod self.p."""
         if x % self.p == 0:
             pass
         for i in range(1, self.p):
             if (i * x) % self.p == 1:
                 return i
 
-    # obtains an np.array, finds the first nonzero coordinate, scales the
-    # array to normalize the first nonzero position, and returns the scaled array
-    # and the index of the first nonzero position.
-    # returns (-2, n) if n is all zeros... due to implementation using an iterator.
-    def _scale(self, n: np.array) -> tuple[int, np.array]:
+    def _scale(self, n: np.array, factor_only = False) -> tuple[int, np.array]:
+        """Rescale n mod p so that its leading (first nonzero) entry is 1.
+
+        Returns (index of that entry, rescaled vector), or the leading coefficient alone
+        if factor_only. An all-zero vector has no leading term: it yields (-2, zeros), or
+        0 under factor_only.
+        """
         mod_n = np.mod(n, self.p)
         if not np.any(mod_n):
+            if factor_only:
+                return 0
             return (-2, mod_n) # :3
 
         lt_idx = int( np.nonzero(n)[0][0] )
         lt = int( n[lt_idx] )
         lt_inv = self._rem(lt)
+        if factor_only:
+            return lt
+        
         return lt_idx, np.mod(lt_inv * n, self.p)
     
-    # returns a basis for the image of the boundary matrix as a dict, where the leading
-    # term of each basis vector is one. 
-    # keys are the indices of the leading terms, and values are the associated vector.
     def _sieve_basis(self, d: int, cocycles: bool = False) -> dict:
+        """An echelon basis for the image of the d-boundary map, or of the d-coboundary.
+
+        Keyed by the index of each vector's leading term, which is normalized to 1;
+        distinct keys are what make the vectors independent. A column reducing to zero is
+        already spanned, and contributes nothing.
+        """
         self._p_prime()
 
         if cocycles:
@@ -117,35 +129,42 @@ class SimpHomology:
                     idx, scaled = self._scale(scaled - basis[pivot])
                 iter += 1
 
+            if idx < 0:
+                continue
+
             basis[idx] = scaled
 
         return {key : value for key, value in basis.items() if key >= 0}
 
-    # given a type of dictionary as produced by _image_basis -- a dictionary
-    # with (pivot index, pivot vector) where pivots are unique -- runs a vector 
-    # through the dictionary vectors in order of the position of their LT, and 
-    # updates the dictionary only if the vector survives.
     def _cycle_sieve(self, cycles: dict, cycle: np.array) -> dict:
+        """Reduce cycle against the echelon basis `cycles`, adding it if it survives.
+
+        Leading terms are cleared left to right. A vector reducing to zero is already
+        spanned and is dropped; otherwise its new leading term becomes a fresh pivot.
+        Mutates `cycles` and returns it.
+        """
         idx, scaled = self._scale(cycle)
         pivots = sorted(cycles.keys())
         iter = 0
-
+    
         while iter >= 0 and idx in pivots and iter<len(pivots):
             pivot = pivots[iter]
             if scaled[pivot] != 0:
-                idx, scaled = self._scale(scaled - cycles[pivot])
+                cleared = scaled - cycles[pivot]
+                idx, scaled = self._scale(cleared)
             iter += 1
 
         if idx >= 0:
             cycles[idx] = scaled
 
         return cycles
-
     
-    # finds explicit cycle representatives for the d-homology group. requires working over Z_p.
-    # keys are the indices of the leading terms, as in _sieve_basis; there is one entry per
-    # generator of H_d(K; Z_p).
     def cycle_reps(self, d: int) -> dict:
+        """Representatives for a basis of H_d(K; Z_p), keyed by leading term.
+
+        A basis of the cycles Z_d is sieved against the boundaries B_d; those surviving
+        with a leading term of their own generate the quotient, one entry per generator.
+        """
         self._p_prime()
 
         sieve = self._sieve_basis(d+1) if d < self.K.dim else {}
@@ -164,10 +183,12 @@ class SimpHomology:
 
         return cycle_reps
 
-    # finds explicit cocycle representatives for the d-homology group. requires working over Z_p.
-    # keys are the indices of the leading terms, as in _sieve_basis; there is one entry per
-    # generator of H^d(K; Z_p).
     def cocycle_reps(self, d: int) -> dict:
+        """Representatives for a basis of H^d(K; Z_p), keyed by leading term.
+
+        The same construction as cycle_reps with the arrows reversed: the cocycles Z^d
+        are sieved against the coboundaries B^d.
+        """
         self._p_prime()
 
         sieve = self._sieve_basis(d-1, cocycles=True) if d > 0 else {}

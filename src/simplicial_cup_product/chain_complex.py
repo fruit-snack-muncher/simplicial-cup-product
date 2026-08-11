@@ -11,11 +11,12 @@ class ChainComplex:
             raise ValueError('d must be a non-negative integer at most the dimension of the complex.')
 
         
-    # returns the boundary of any d-simplex as a numpy array, where indices
-    # of the array correspond to the sorted indices of the d-1 simplices,
-    # and nonzero entries represent the signs of each d-1 simplex in the
-    # boundary as a d-1 chain.
     def simplex_boundary(self, s: tuple) -> np.array:
+        """The boundary of a d-simplex, as a (d-1)-chain.
+
+        Indexed by sorted_simplices[d-1], with the incidence signs (-1)**i as its
+        nonzero entries. A vertex has zero boundary.
+        """
         d = len(s) - 1
         if d < 0:
             return ValueError("Dimension of the simplex must be at least 0.")
@@ -42,11 +43,12 @@ class ChainComplex:
     def euler_char(self) -> int:
         return sum([(-1)**i * rank for i, rank in enumerate(self.chain_ranks)])
 
-    # boundary matrix of d-simplices, where the columns represent d-simplices, rows represent d-1 simplices,
-    # columns represent the boundary d-1 chains of each d-simplex.
-    # all simplices are sorted according to the lexicographic ordering on their vertices in sorted_simplices,
-    # where rightward columns and downward rows are higher in the order.
     def d_boundary_matrix(self, d: int = 0) -> np.array:
+        """The d-boundary map: columns are d-simplices, rows (d-1)-simplices.
+
+        Both are ordered as in sorted_simplices, so rightward columns and downward rows
+        are higher in the lexicographic order.
+        """
         self._dim_check(d)
     
         # square 0 matrix for d = 0; only used to verify boundary boundary = 0 for all boundary maps.
@@ -57,6 +59,7 @@ class ChainComplex:
         return boundary_matrix.T
 
     def boundary_matrix(self) -> np.array:
+        """Every boundary map at once, as one square matrix on the total chain group."""
         ranks = self.chain_ranks()
 
         boundary_matrix = np.zeros( (sum(ranks), sum(ranks)),  dtype=int) # 0 matrix; to be filled in.
@@ -67,11 +70,13 @@ class ChainComplex:
 
         return boundary_matrix
 
-    # coboundary matrix of d-cochains.
-    # the columns represent the dual d-cochain corresponding to each d-simplex S, where phi sends S to 1 and all 
-    # other simplices to 0. the rows represent d+1-simplices. each column reveals where a particular d-simplex
-    # appeared in the boundary of a d+1-simplex, encoding orientation information as +/-.
     def d_coboundary_matrix(self, d: int = 0) -> np.array:
+        """The d-coboundary map, the transpose of the (d+1)-boundary matrix.
+
+        Columns are the d-cochains dual to each d-simplex, rows the (d+1)-simplices, so a
+        column records where its simplex appears in the boundary of a (d+1)-simplex,
+        sign included.
+        """
         self._dim_check(d)
 
         # square 0 matrix for d = K.dim; only used to verify boundary boundary = 0 for all boundary maps.
@@ -83,6 +88,7 @@ class ChainComplex:
         return coboundary_matrix
 
     def coboundary_matrix(self) -> np.array:
+        """Every coboundary map at once, as one square matrix on the total cochain group."""
         ranks = self.chain_ranks()
 
         coboundary_matrix = np.zeros( (sum(ranks), sum(ranks)),  dtype=int) # 0 matrix; to be filled in.

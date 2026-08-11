@@ -30,24 +30,27 @@ class SimplicialComplex:
     def _simplex_dimension(self, s: tuple) -> int:
         return len(s) - 1
 
-    # updates the global vertex ordering. intended to be used whenever a new simplex is added
     def _update_Vrank(self, s: tuple) -> None:
+        """Append the vertices of s to the global ordering, keeping first-seen order."""
         new_Vrank = self.Vrank + list(s)
         updated_Vrank = dict.fromkeys(new_Vrank)
         self.Vrank = list(updated_Vrank)
 
-    # updates the order dictionary, where keys are points and values are their place in the ordering.
     def _update_order_lookup(self) -> None:
+        """Rebuild the vertex -> position map from the global ordering."""
         self._order_lookup = {point: order for order, point in enumerate(self.Vrank)}
 
     def _update_dim(self) -> None:
         if self.simplices: # throws an error upon init...
             self.dim = max(self.simplices.keys())
 
-    # sorting all simplices according to lexicographic ordering on their tuples.
-    # tuples always remain untouched - or the boundary operator described in chain_complex.py fails, 
-    # which relies on faces of simplices carrying the same ordering as their origin simplex.
     def _sort_all_simplices(self) -> None:
+        """Order each dimension's simplices lexicographically by vertex rank.
+
+        The tuples themselves are left untouched: the boundary operator in
+        chain_complex.py relies on a face carrying the vertex order of the simplex it
+        came from.
+        """
         for d in range(len(self.simplices.keys())):
             # all dimension d simplices
             d_simplices = list(self.simplices[d])
@@ -63,8 +66,8 @@ class SimplicialComplex:
                 return self.sorted_simplices[d]
             raise ValueError('Dimension d must be nonnegative and at most the dimension of the complex.')
     
-    # adds a simplex to the simplicial complex, along with all its faces.
     def add_simplex(self, *simplices) -> None:
+        """Add simplices with all their faces, keeping the complex downward closed."""
         for s in simplices:
             if not type(s) is tuple:
                 raise TypeError(f"Expected tuple input, found input type {type(s)}")

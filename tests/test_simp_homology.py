@@ -203,7 +203,7 @@ def boundaries_matrix(H: SimpHomology, d: int) -> np.array:
 
 
 @pytest.mark.parametrize("faces, p, betti", CYCLE_REPS)
-def testcycle_reps_count_is_the_mod_p_betti_number(faces, p, betti):
+def test_cycle_reps_count_is_the_mod_p_betti_number(faces, p, betti):
     # the headline claim: one representative per generator of H_d(K; Z_p), in
     # every degree, checked against the betti numbers of the space rather than
     # against another run of the same code.
@@ -214,7 +214,7 @@ def testcycle_reps_count_is_the_mod_p_betti_number(faces, p, betti):
 
 
 @pytest.mark.parametrize("faces, p, d", REPS_DEGREES)
-def testcycle_reps_count_agrees_with_d_homology(faces, p, d):
+def test_cycle_reps_count_agrees_with_d_homology(faces, p, d):
     # the same count, but against what d_homology reports for this complex, so
     # the two routes to dim H_d(K; Z_p) cannot drift apart even if the
     # hand-written table above is wrong.
@@ -224,7 +224,7 @@ def testcycle_reps_count_agrees_with_d_homology(faces, p, d):
 
 
 @pytest.mark.parametrize("faces, p, d", REPS_DEGREES)
-def testcycle_reps_are_cycles(faces, p, d):
+def test_cycle_reps_are_cycles(faces, p, d):
     # a representative of a homology class has to be a cycle to begin with: a
     # d-chain, reduced mod p and not the zero one, that d_d kills.
     H = SimpHomology(build(faces), p)
@@ -238,7 +238,7 @@ def testcycle_reps_are_cycles(faces, p, d):
 
 
 @pytest.mark.parametrize("faces, p, d", REPS_DEGREES)
-def testcycle_reps_are_independent_modulo_the_boundaries(faces, p, d):
+def test_cycle_reps_are_independent_modulo_the_boundaries(faces, p, d):
     # being the right number of cycles is not enough -- they have to be
     # distinct, nonzero classes in Z_d / B_d. adjoining them to a spanning set
     # of B_d must therefore raise its rank by exactly their number, which
@@ -258,7 +258,7 @@ def testcycle_reps_are_independent_modulo_the_boundaries(faces, p, d):
 
 
 @pytest.mark.parametrize("p", PRIMES)
-def testcycle_reps_on_a_solid_simplex(p):
+def test_cycle_reps_on_a_solid_simplex(p):
     # the solid 3-simplex is contractible: a single generator, the class of a
     # point, in degree 0 and nothing above it.
     H = SimpHomology(SimplicialComplex((0, 1, 2, 3)), p)
@@ -268,7 +268,7 @@ def testcycle_reps_on_a_solid_simplex(p):
 
 
 @pytest.mark.parametrize("p", PRIMES)
-def testcycle_reps_on_a_disconnected_complex(p):
+def test_cycle_reps_on_a_disconnected_complex(p):
     # two disjoint solid triangles: H_0 = Z_p^2, one generator per component,
     # and both pieces are contractible, so nothing survives above degree 0.
     H = SimpHomology(SimplicialComplex((0, 1, 2), (3, 4, 5)), p)
@@ -278,13 +278,13 @@ def testcycle_reps_on_a_disconnected_complex(p):
 
 
 @pytest.mark.parametrize("d", [-1, 3])
-def testcycle_reps_rejects_out_of_range_dimension(d):
+def test_cycle_reps_rejects_out_of_range_dimension(d):
     with pytest.raises(ValueError):
         SimpHomology(build(TORUS), 2).cycle_reps(d)
 
 
 @pytest.mark.parametrize("p", [0, 1, 4])
-def testcycle_reps_rejects_non_prime_coefficients(p):
+def test_cycle_reps_rejects_non_prime_coefficients(p):
     # the sieve inverts leading terms mod p, and the nullspace is taken with a
     # zero test that reads x % p; neither means anything unless Z_p is a field.
     with pytest.raises(ValueError):
@@ -310,7 +310,7 @@ def coboundaries_matrix(H: SimpHomology, d: int) -> np.array:
 
 
 @pytest.mark.parametrize("faces, p, d", REPS_DEGREES)
-def testcocycle_reps_count_is_the_cohomology_rank(faces, p, d):
+def test_cocycle_reps_count_is_the_cohomology_rank(faces, p, d):
     # the headline claim: one representative per generator of H^d(K; Z_p). over
     # a field the universal coefficient theorem makes H^d the dual of H_d, so
     # this is the mod p betti number again -- which the cycle tests above have
@@ -321,7 +321,7 @@ def testcocycle_reps_count_is_the_cohomology_rank(faces, p, d):
 
 
 @pytest.mark.parametrize("faces, p, d", REPS_DEGREES)
-def testcocycle_reps_are_cocycles_independent_modulo_the_coboundaries(faces, p, d):
+def test_cocycle_reps_are_cocycles_independent_modulo_the_coboundaries(faces, p, d):
     # the right number of vectors is only meaningful if they are the right kind
     # of vector: d-cochains the coboundary map kills, spanning a subspace that
     # meets B^d only in zero. that plus the count makes them a basis of H^d.

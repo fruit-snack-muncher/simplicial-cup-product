@@ -13,17 +13,22 @@ Contains a number of classes to :
    cohomology over `Z_p.` 
 
 AI USAGE (Claude, via Claude Code):
-1. Non-structural bugs, docstrings
-2. Citations
-3. Creating + using test suite
-4. Credits
-5. Three defects in `_cycle_reps` (`simp_homology.py`), found by writing its
+1. Docstrings, and a few comments.
+2. Citations + credits
+3. Creating + using test suite.
+4. Three defects in `_cycle_reps` (`simp_homology.py`), found by writing its
    test suite and then fixed: an unbound `sieve` in the top dimension, a live
    `dict.keys()` view that discarded every representative, and a cycle basis
    read off `Matrix.nullspace`, which stays over `Q` and so missed the mod 2
    fundamental classes of `RP^2` and the Klein bottle.
-6. Sourcing the 9-vertex `CP^2` used in the tests, and checking its f-vector,
+5. Sourcing the 9-vertex `CP^2` used in the tests, and checking its f-vector,
    Euler characteristic, ridge degrees and integral homology before use.
+6. `tests/test_cup_product.py`, and repeated diagnosis of `cup` against it —
+   most substantially that reducing a product with `_cycle_sieve` renormalizes
+   the running vector and loses its scale, so the coefficient was wrong in odd
+   characteristic; plain reduction against the coboundary and representative
+   pivots, with no renormalization, fixed it and made `cup` graded-commutative.
+
 
 ## References ##
 
