@@ -1,33 +1,56 @@
 ## Simplicial Cup Product ##
 
-A work-in-progress repo, aiming tocomputing the simplicial cup product 
-over `Z_p` of simplicial complexes. Intended to be used for smaller simplicial
-complexes.
+Computing simplicial cup products over `Z_p` of (finite) abstract simplicial
+complexes. Intended to be used for smaller simplicial complexes; large complexes
+with thousands of vertices have not been tested. Also computing homology and
+cohomology over `Z` and `Z_p.` Implements simplicial complexes and chain 
+complexes from scratch. Uses matrices for much of actual computations.
+
+Simplicial cup products are computed via cocycle representatives, which were
+computed by creating a sieve of coboundaries at each relevant dimension. Each
+coboundary was represented as a vector, where the entries corresponded to the
+image of the simplex associated with that position.
+
+A cocycle basis was ran through the sieve. The sieve was constructed so that
+coboundaries all have unique pivots. Each surviving cocycle had a unique leading
+term (pivot) position not found in any of the coboundaries. These surviving
+cocycles formed the corresponding dimension homology class representatives, where 
+the number of them was verified to be equal to the Betti number.
+
+Simplicial cup products were computed via the usual cochain-level formula on
+the cocycle representatives, where the resulting cochain was ran through the 
+corresponding dimension coboundary sieve, and then reduced against the cycle 
+representatives, to produce a sum of cycle representatives in the target 
+dimension. A matrix encoding the cup product computations was also implemented, 
+taking advantage of graded-commutativity to make computations quicker.
+
+I may soon implement a method to compute the actual cohomology ring by somehow 
+finding a minimal set of generators and relations. 
+
+Work in progress.
+
 
 Contains a number of classes to :
-1. Construct simplicial complexes (simplicial_complex.py)
-2. Compute the Euler characteristic and boundary matrices
-   of the simplicial complex, with simplicial chains.
-   Coefficients default to `Z`. (chain_complex.py)
-3. Compute the simplicial homology over `Z` and `Z_p`, and
-   cohomology over `Z_p.` 
+1. Construct simplicial complexes.
+2. Compute the Euler characteristic and boundary matrices of the simplicial 
+   complex, with simplicial chains. Coefficients default to `Z`.
+3. Compute the simplicial homology over `Z` and `Z_p`; cohomology over `Z_p`
+   by elementary application of the UCT.
+4. Computing simplicial cup products and a cup product matrix for a given
+   abstract simplicial complex.
 
 AI USAGE (Claude, via Claude Code):
-1. Docstrings, and a few comments.
-2. Citations + credits
-3. Creating + using test suite.
-4. Three defects in `_cycle_reps` (`simp_homology.py`), found by writing its
-   test suite and then fixed: an unbound `sieve` in the top dimension, a live
-   `dict.keys()` view that discarded every representative, and a cycle basis
-   read off `Matrix.nullspace`, which stays over `Q` and so missed the mod 2
-   fundamental classes of `RP^2` and the Klein bottle.
-5. Sourcing the 9-vertex `CP^2` used in the tests, and checking its f-vector,
-   Euler characteristic, ridge degrees and integral homology before use.
-6. `tests/test_cup_product.py`, and repeated diagnosis of `cup` against it —
-   most substantially that reducing a product with `_cycle_sieve` renormalizes
-   the running vector and loses its scale, so the coefficient was wrong in odd
-   characteristic; plain reduction against the coboundary and representative
-   pivots, with no renormalization, fixed it and made `cup` graded-commutative.
+1. Docstrings, most comments, citations and credits.
+2. The test suite in `tests/`, and diagnosis against it. Several defects were
+   found this way and fixed. The largest three:
+    - Acycle basis read off `Matrix.nullspace`, which stays over `Q` and so 
+      missed the mod 2 fundamental classes of `RP^2` and the Klein bottle
+    - A reduction that renormalized the running vector and so lost the coefficient 
+      in odd characteristic, breaking graded-commutativity
+    - A `dict.keys()` view that discarded every cocycle representative.
+3. Sourcing and verifying the 9-vertex `CP^2` used in the tests.
+4. Profiling the product path and reworking it around cached per-bidegree
+   lookups and product blocks, for a large speedup on repeated products.
 
 
 ## References ##
