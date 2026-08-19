@@ -24,6 +24,12 @@ class CupProduct():
                                     for d in range(0, self.K.dim+1)}
         self.non_trivial_dim = frozenset(d for d, reps in self.cocycle_reps.items() if reps)
 
+        # a flat basis of H^*(K; Z_p): (degree, index into that degree's generators),
+        # by degree and then by pivot. this is the row and column order of
+        # cohomology_products, and the only place the grading is flattened.
+        self.generators = tuple((d, i) for d in sorted(self.non_trivial_dim)
+                                for i in range(0, len(self.cocycle_reps[d])))
+
         # filled on demand by _gather, _reducer and _product_block: the per-bidegree
         # face lookups, the per-degree echelon basis, and the products of the
         # generators, all of which are reused by every product of that shape.
@@ -216,11 +222,30 @@ class CupProduct():
 
         return self._products
 
-    def cohomology_ring(self):
-        reached_cocycle_reps = self.cocycle_reps.copy()
+    def _generator_product(self, a: int, b: int) -> tuple[int, tuple]:
+        """The cup product of the a-th and b-th generators of H^*, by flat index.
 
-        for d in range(0, self.K.dim + 1):
-            if d not in self.non_trivial_dim:
-                continue
+        Unchecked: both indices must be in range for self.generators.
+        """
+        (d, i), (e, j) = self.generators[a], self.generators[b]
 
-        #implmeent from here.
+        # nothing of that degree to evaluate on, so the product is the zero class.
+        # reported the way cup_from_rep reports it, with no basis to expand in.
+        if d + e > self.K.dim:
+            return d + e, (0, )
+
+        return d + e, tuple(map(int, self._product_block(d, e)[i][j]))
+
+    def cohomology_products(self) -> tuple[tuple]:
+        """The multiplication table of the cocycle representatives under the cup product.
+
+        A square matrix over the generators of H^*(K; Z_p) listed in self.generators:
+        entry [a][b] is the a-th generator cup the b-th, as (degree, coefficients in
+        the basis of that degree) - the same answer cup gives for the corresponding
+        basis vectors. Every bidegree is multiplied out once and cached on the way, so
+        the table costs one pass over the blocks however often it is asked for.
+        """
+        n = len(self.generators)
+
+        return tuple(tuple(self._generator_product(a, b) for b in range(0, n))
+                     for a in range(0, n))

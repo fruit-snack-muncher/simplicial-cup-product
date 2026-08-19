@@ -485,6 +485,78 @@ def test_cup_square_vanishes_on_the_torus_mod_odd_p(p):
         assert cp.cup((1, phi), (1, phi))[1] == (0,)
 
 
+# --------------------------------------------------------------------------
+# cohomology_products(), the whole multiplication table at once: one row and
+# column per generator of H^*, across every degree rather than a bidegree at a
+# time. cup() is already pinned above, so what is left to check is that the
+# table is indexed the way it says it is.
+# --------------------------------------------------------------------------
+
+# the standard basis vector of H^d picking out its i-th generator, i.e. the
+# class that cohomology_products() means by the flat index into cp.generators.
+def generator_class(cp: CupProduct, d: int, i: int) -> tuple:
+    return tuple(int(j == i) for j in range(len(cp.cocycle_reps[d])))
+
+
+@pytest.mark.parametrize("name, faces, p", CUP_CASES)
+def test_cohomology_products_is_indexed_by_the_generators(name, faces, p):
+    # cp.generators lists (degree, index into that degree) by degree and then
+    # by pivot, skipping the degrees with no cohomology, and the table is
+    # square over exactly that list.
+    cp = cup_product(faces, p)
+    table = cp.cohomology_products()
+
+    assert cp.generators == tuple((d, i) for d in range(0, cp.K.dim + 1)
+                                  for i in range(len(reps(cp, d))))
+    assert len(table) == len(cp.generators)
+    assert all(len(row) == len(cp.generators) for row in table)
+
+
+@pytest.mark.parametrize("name, faces, p", CUP_CASES)
+def test_cohomology_products_agrees_with_cup(name, faces, p):
+    # the entry at (a, b) is the product of the two generators those indices
+    # name, so it has to be what cup() gives for their basis vectors --
+    # including above the top dimension, where both report a bare zero.
+    cp = cup_product(faces, p)
+    table = cp.cohomology_products()
+
+    for a, (d, i) in enumerate(cp.generators):
+        for b, (e, j) in enumerate(cp.generators):
+            assert table[a][b] == cp.cup((d, generator_class(cp, d, i)),
+                                         (e, generator_class(cp, e, j)))
+
+
+@pytest.mark.parametrize("name, faces, p", CUP_CASES)
+def test_cohomology_products_is_graded_commutative(name, faces, p):
+    # phi cup psi = (-1)^(de) psi cup phi over the whole table at once, sign
+    # included: the transposed entry is the negative in odd x odd degree.
+    cp = cup_product(faces, p)
+    table = cp.cohomology_products()
+
+    for a, (d, _) in enumerate(cp.generators):
+        for b, (e, _) in enumerate(cp.generators):
+            degree, coeffs = table[a][b]
+            mirror_degree, mirror = table[b][a]
+            sign = -1 if (d * e) % 2 else 1
+
+            assert degree == mirror_degree
+            assert coeffs == tuple((sign * c) % p for c in mirror)
+
+
+def test_cohomology_products_table_of_rp2_mod_2():
+    # H^*(RP^2; Z_2) = Z_2[x]/(x^3), one generator in each degree, so the table
+    # is the 3x3 record of that: 1 is the unit, x cup x is the fundamental
+    # class, and everything of total degree above 2 dies.
+    cp = cup_product(RP2, 2)
+
+    assert cp.generators == ((0, 0), (1, 0), (2, 0))
+    assert cp.cohomology_products() == (
+        ((0, (1,)), (1, (1,)), (2, (1,))),
+        ((1, (1,)), (2, (1,)), (3, (0,))),
+        ((2, (1,)), (3, (0,)), (4, (0,))),
+    )
+
+
 @pytest.mark.parametrize("d", [-1, 3])
 def test_cup_rejects_out_of_range_dimension(d):
     cp = cup_product(RP2, 2)
