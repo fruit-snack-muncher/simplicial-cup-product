@@ -1,43 +1,54 @@
 from simplicial_cup_product.simplicial_complex import SimplicialComplex
 from simplicial_cup_product.chain_complex import ChainComplex
 from simplicial_cup_product.simp_homology import SimpHomology
-from sympy import Matrix, GF, isprime
+from sympy import isprime
 import numpy as np
 
 
 class CupProduct():
-    # implicit to be a connected simplicial complex. will bug if not!
-    # do not add simplices to the complex once initialized. create a separate
-    # CupProduct instance for a new complex.
+    """The cup product on H^*(K; Z_p), as a multiplication table.
+
+    Everything here works towards cohomology_products(): the square matrix whose
+    (a, b) entry is the a-th generator of H^*(K; Z_p) cup the b-th, over the flat
+    basis self.generators. cup() and cup_from_rep() are that table read one entry
+    or one linear combination at a time.
+
+    K is taken to be a connected simplicial complex, and must not gain simplices
+    once this is initialized: build a new CupProduct for a new complex.
+    """
+
     def __init__(self, K: SimplicialComplex, p: int = 2):
         self.p = abs(p)
-        self._p_prime()
+        if not isprime(self.p):
+            raise ValueError('p must be a prime number.')
 
         self.K = K
         self.C = ChainComplex(K)
         self.H = SimpHomology(K, self.p)
+        self.degrees = range(0, K.dim + 1)
 
-        self._coboundary_sieves = {d: self.H._sieve_basis(d, cocycles=True) for d in range(0, self.K.dim)}
-        self._face_maps = {d: {face: i for i, face in enumerate(self.K.sorted_simplices[d])} for d in range(0, self.K.dim+1)}
-        self.cocycle_reps = {d: self.H.cocycle_reps(d) for d in range(0, self.K.dim + 1)}
-        self.sorted_cocycle_reps = {d: tuple( self.cocycle_reps[d][key] for key in sorted(self.cocycle_reps[d]) )  
-                                    for d in range(0, self.K.dim+1)}
-        self.non_trivial_dim = frozenset(d for d, reps in self.cocycle_reps.items() if reps)
+        self._face_maps = {d: {face: i for i, face in enumerate(K.sorted_simplices[d])}
+                           for d in self.degrees}
+        self.cocycle_reps = {d: self.H.cocycle_reps(d) for d in self.degrees}
 
-        # a flat basis of H^*(K; Z_p): (degree, index into that degree's generators),
-        # by degree and then by pivot. this is the row and column order of
+        # the generators of H^d as integer cochains, ordered by pivot. this order
+        # is the index i of the i-th generator everywhere below.
+        self.basis = {d: tuple(np.asarray(reps[pivot]).astype(int) for pivot in sorted(reps))
+                      for d, reps in self.cocycle_reps.items()}
+
+        # a flat basis of H^*: (degree, index into that degree's generators), by
+        # degree and then by pivot. this is the row and column order of
         # cohomology_products, and the only place the grading is flattened.
-        self.generators = tuple((d, i) for d in sorted(self.non_trivial_dim)
-                                for i in range(0, len(self.cocycle_reps[d])))
+        self.generators = tuple((d, i) for d in self.degrees for i in range(0, len(self.basis[d])))
 
         # filled on demand by _gather, _reducer and _product_block: the per-bidegree
         # face lookups, the per-degree echelon basis, and the products of the
         # generators, all of which are reused by every product of that shape.
         self._gathers, self._reducers, self._products = {}, {}, {}
 
-    def _p_prime(self):
-        if not isprime(self.p):
-            raise ValueError('p must be a prime number.')
+    def _check_degrees(self, *degrees: int):
+        if not set(degrees).issubset(self.degrees):
+            raise ValueError('Dimension error on cocycle representatives.')
 
     def _gather(self, d: int, e: int) -> tuple[np.array, np.array]:
         """The front and back face indices of every (d+e)-simplex.
@@ -59,7 +70,7 @@ class CupProduct():
 
         return self._gathers[(d, e)]
 
-    def _reducer(self, d: int) -> tuple[dict, dict, int]:
+    def _reducer(self, d: int) -> tuple[dict, dict]:
         """The echelon basis of the d-cocycles, keyed by pivot, with the rep columns.
 
         The coboundaries and the cocycle representatives together span Z^d, each with
@@ -68,38 +79,26 @@ class CupProduct():
         coefficients belong in the answer.
         """
         if d not in self._reducers:
-            sieve = self._coboundary_sieves[d - 1] if d >= 1 else {}
+            sieve = self.H._sieve_basis(d - 1, cocycles=True) if d >= 1 else {}
             reps = self.cocycle_reps[d]
-            pivots = {pivot: np.asarray(vector).astype(int)
-                      for pivot, vector in {**sieve, **reps}.items()}
 
-            self._reducers[d] = (pivots, {pivot: column for column, pivot in enumerate(sorted(reps))},
-                                 len(reps))
+            self._reducers[d] = ({pivot: np.asarray(vector).astype(int)
+                                  for pivot, vector in {**sieve, **reps}.items()},
+                                 {pivot: column for column, pivot in enumerate(sorted(reps))})
 
         return self._reducers[d]
-
-    def _rep_index(self, d: int, cochain: np.array) -> int:
-        """Which generator of H^d this cochain is, or None if it is not one of them."""
-        for i, rep in enumerate(self.sorted_cocycle_reps[d]):
-            if np.array_equal(cochain, rep):
-                return i
-
-        return None
 
     def _cup_indices(self, d: int, i: int, e: int, j: int) -> tuple:
         """The coefficients of the i-th generator of H^d cup the j-th of H^e.
 
         Unchecked: d + e must not exceed the dimension and both indices must be in
-        range. cup_from_rep is the way in from outside.
+        range. cup and cup_from_rep are the ways in from outside.
         """
-        p = self.p
         front, back = self._gather(d, e)
-        phi = np.asarray(self.sorted_cocycle_reps[d][i]).astype(int)
-        psi = np.asarray(self.sorted_cocycle_reps[e][j]).astype(int)
-        residue = (phi[front] * psi[back]) % p
+        residue = (self.basis[d][i][front] * self.basis[e][j][back]) % self.p
 
-        pivots, columns, width = self._reducer(d + e)
-        coeffs = [0] * width
+        pivots, columns = self._reducer(d + e)
+        coeffs = [0] * len(columns)
 
         # in an echelon basis the leading term of anything in the span is itself a
         # pivot, so this visits only the pivots that actually turn up - a handful,
@@ -110,86 +109,13 @@ class CupProduct():
             pivot = int(nonzero[0])
             c = int(residue[pivot])
 
-            residue = (residue - c * pivots[pivot]) % p
+            residue = (residue - c * pivots[pivot]) % self.p
             if pivot in columns:
                 coeffs[columns[pivot]] = c
 
             nonzero = np.flatnonzero(residue)
 
         return tuple(coeffs)
-
-    # cup will produce an error if the inputs are not dimension less than or equal to the 
-    # dimension of the complex!
-    def cup_from_rep(self, PHI: tuple[int, np.array], PSI: tuple[int, np.array]) -> tuple:
-        """The cup product of two classes, each given as (degree, cocycle representative).
-
-        Returns the degree of the product and its coefficients in the basis of that
-        degree, ordered by pivot. Each representative must be one of self.cocycle_reps.
-        """
-        phiD, phi = PHI
-        psiD, psi = PSI
-
-        if not {phiD, psiD}.issubset(set([i for i in range(0, self.K.dim+1)])):
-            raise ValueError('Dimension error on cocycle representatives.')
-
-        # phiD + psiD exceeds the dimension of our complex, and will output
-        # a zero class.
-        if phiD + psiD > self.K.dim:
-            return phiD + psiD, (0, )
-        
-        # sends any cycle that is all zeros straight to zero.
-        # represents multiplication by a boundary; placed early to avoid catch in following lines.
-        if not any(phi) or not any(psi):
-            return phiD + psiD, (0, ) * len( self.cocycle_reps[phiD+psiD] )
-
-        # locating each representative is the same scan that checks it is one, so
-        # the index it yields is what gets handed on.
-        i, j = self._rep_index(phiD, phi), self._rep_index(psiD, psi)
-
-        if i is None:
-            raise ValueError('No cocycle phi in given dimension.')
-        if j is None:
-            raise ValueError('No cocycle psi in given dimension.')
-
-        # the coefficients of the product in the basis of H^{phiD + psiD}, in
-        # the same order as sorted(self.cocycle_reps[phiD + psiD]).
-        return phiD + psiD, self._cup_indices(phiD, i, psiD, j)
-
-    # (int, tuple) : int represents dimension of the class.
-    #              : tuple represents a Z_p-linear combination of the cocycle reps,
-    #                sorted according to ordering on their pivots - guaranteed to be
-    #                unambiguous as pivots are unique per design.
-    # cup will produce an error if the inputs are not less than or equal to the 
-    # dimension of the complex!
-    def cup(self, PHI: tuple[int, tuple], PSI: tuple[int, tuple]) -> tuple[int, tuple]:
-        phiD, phi = PHI
-        psiD, psi = PSI
-        
-        if not {phiD, psiD}.issubset( set([i for i in range(0, self.K.dim+1)]) ):
-            raise ValueError('Dimension error on cocycle representatives.')
-        
-        if not len(phi) == len(self.cocycle_reps[phiD]):
-            raise ValueError('Length of phi out of bounds.')
-        if not len(psi) == len(self.cocycle_reps[psiD]):
-            raise ValueError('Length of psi out of bounds.')
-
-        # phiD + psiD exceeds the dimension of our complex, and will output
-        # a zero class.
-        if phiD + psiD > self.K.dim:
-            return phiD + psiD, (0, )
-                
-        # sends any cycle that is all zeros straight to zero.
-        if not any(phi) or not any(psi):
-            return phiD + psiD, (0, ) * len( self.cocycle_reps[phiD+psiD] )
-
-        # the products of the generators are fixed, so the expansion is arithmetic
-        # on the cached block: sum_ij phi_i psi_j (x_i cup y_j), one coefficient per
-        # generator of H^{phiD + psiD}. no simplex is touched here.
-        block = self._product_block(phiD, psiD)
-        final_product = np.einsum('i,j,ijk->k', np.array(phi).astype(int),
-                                  np.array(psi).astype(int), block)
-
-        return phiD+psiD, tuple( map(int, final_product % self.p) )
 
     def _product_block(self, d: int, e: int) -> np.array:
         """The products of the generators of H^d with those of H^e, as one array.
@@ -200,12 +126,11 @@ class CupProduct():
         opposite block a signed transpose, and mod 2 the sign is invisible.
         """
         if (d, e) not in self._products:
-            heights = (len(self.cocycle_reps[d]), len(self.cocycle_reps[e]),
-                       len(self.cocycle_reps[d + e]))
+            shape = (len(self.basis[d]), len(self.basis[e]), len(self.basis[d + e]))
 
             if d <= e:
-                block = np.array([[self._cup_indices(d, i, e, j) for j in range(0, heights[1])]
-                                  for i in range(0, heights[0])]).astype(int).reshape(heights)
+                block = np.array([[self._cup_indices(d, i, e, j) for j in range(0, shape[1])]
+                                  for i in range(0, shape[0])]).astype(int).reshape(shape)
             else:
                 sign = -1 if (d * e) % 2 else 1
                 block = (sign * np.swapaxes(self._product_block(e, d), 0, 1)) % self.p
@@ -214,38 +139,94 @@ class CupProduct():
 
         return self._products[(d, e)]
 
-    def _cache_products(self) -> dict:
-        """Every bidegree's product block, keyed by (d, e). Filled once, then reused."""
-        for d in range(0, self.K.dim + 1):
-            for e in range(0, self.K.dim + 1 - d):
-                self._product_block(d, e)
+    def _generator_product(self, d: int, i: int, e: int, j: int) -> tuple[int, tuple]:
+        """One entry of the table: the i-th generator of H^d cup the j-th of H^e.
 
-        return self._products
-
-    def _generator_product(self, a: int, b: int) -> tuple[int, tuple]:
-        """The cup product of the a-th and b-th generators of H^*, by flat index.
-
-        Unchecked: both indices must be in range for self.generators.
+        Reported as the degree of the product and its coefficients in the basis of
+        that degree. Above the top dimension there is nothing to evaluate on and no
+        basis to expand in, so the zero class is reported as a bare zero.
         """
-        (d, i), (e, j) = self.generators[a], self.generators[b]
-
-        # nothing of that degree to evaluate on, so the product is the zero class.
-        # reported the way cup_from_rep reports it, with no basis to expand in.
         if d + e > self.K.dim:
-            return d + e, (0, )
+            return d + e, (0,)
 
         return d + e, tuple(map(int, self._product_block(d, e)[i][j]))
 
-    def cohomology_products(self) -> tuple[tuple]:
-        """The multiplication table of the cocycle representatives under the cup product.
+    def _rep_index(self, d: int, cochain: np.array) -> int:
+        """Which generator of H^d this cochain is, or None if it is not one of them."""
+        for i, rep in enumerate(self.basis[d]):
+            if np.array_equal(cochain, rep):
+                return i
 
-        A square matrix over the generators of H^*(K; Z_p) listed in self.generators:
-        entry [a][b] is the a-th generator cup the b-th, as (degree, coefficients in
-        the basis of that degree) - the same answer cup gives for the corresponding
-        basis vectors. Every bidegree is multiplied out once and cached on the way, so
-        the table costs one pass over the blocks however often it is asked for.
+        return None
+
+    def cup_from_rep(self, PHI: tuple[int, np.array], PSI: tuple[int, np.array]) -> tuple[int, tuple]:
+        """The cup product of two classes, each given as (degree, cocycle representative).
+
+        Each representative must be one of self.basis[degree], or a zero cochain,
+        which represents the zero class. The answer is a table entry: the degree of
+        the product and its coefficients in the basis of that degree, ordered by
+        pivot.
+        """
+        (phiD, phi), (psiD, psi) = PHI, PSI
+        self._check_degrees(phiD, psiD)
+
+        if phiD + psiD > self.K.dim:
+            return phiD + psiD, (0,)
+
+        # a zero cochain is a coboundary, not a generator, so multiplication by it
+        # is answered here rather than by the search for one below.
+        if not any(phi) or not any(psi):
+            return phiD + psiD, (0,) * len(self.basis[phiD + psiD])
+
+        # locating each representative is the same scan that checks it is one, so
+        # the index it yields is what gets handed on.
+        i, j = self._rep_index(phiD, phi), self._rep_index(psiD, psi)
+
+        if i is None:
+            raise ValueError('No cocycle phi in given dimension.')
+        if j is None:
+            raise ValueError('No cocycle psi in given dimension.')
+
+        return self._generator_product(phiD, i, psiD, j)
+
+    def cup(self, PHI: tuple[int, tuple], PSI: tuple[int, tuple]) -> tuple[int, tuple]:
+        """The cup product of two classes, each given as (degree, coefficients).
+
+        The coefficients are a Z_p-linear combination of the generators of that
+        degree, one entry per generator and in the order of self.basis. The answer
+        is in the same form, in the basis of the product's degree.
+        """
+        (phiD, phi), (psiD, psi) = PHI, PSI
+        self._check_degrees(phiD, psiD)
+
+        if len(phi) != len(self.basis[phiD]) or len(psi) != len(self.basis[psiD]):
+            raise ValueError('Coefficients do not match the generators of their degree.')
+
+        if phiD + psiD > self.K.dim:
+            return phiD + psiD, (0,)
+
+        # the products of the generators are fixed, so the expansion is arithmetic
+        # on the cached block: sum_ij phi_i psi_j (x_i cup y_j), one coefficient per
+        # generator of H^{phiD + psiD}. no simplex is touched here.
+        product = np.einsum('i,j,ijk->k', np.array(phi).astype(int), np.array(psi).astype(int),
+                            self._product_block(phiD, psiD)) % self.p
+
+        return phiD + psiD, tuple(map(int, product))
+
+    def cohomology_products(self) -> np.ndarray:
+        """The multiplication table of H^*(K; Z_p) under the cup product.
+
+        A square object array over the generators listed in self.generators: entry
+        [a][b] is the a-th generator cup the b-th, as (degree, coefficients in the
+        basis of that degree) - the same answer cup gives for the corresponding
+        basis vectors. Every bidegree is multiplied out once and cached on the way,
+        so the table costs one pass over the blocks however often it is asked for.
         """
         n = len(self.generators)
+        table = np.empty((n, n), dtype=object)
 
-        return tuple(tuple(self._generator_product(a, b) for b in range(0, n))
-                     for a in range(0, n))
+        for a, (d, i) in enumerate(self.generators):
+            for b, (e, j) in enumerate(self.generators):
+                table[a, b] = self._generator_product(d, i, e, j)
+
+        return table

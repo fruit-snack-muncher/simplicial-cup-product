@@ -9,14 +9,15 @@ import pytest
 # Kuehnel's CP^2 in this file. tests/ is a package, so this is an absolute
 # import from the project root.
 from tests.test_simp_homology import (SPHERE, TORUS, RP2, KLEIN, CP2,
-                                      MOD_P_BETTI, build, rank_mod_p)
+                                      S2_WEDGE_S4, MOD_P_BETTI, build,
+                                      rank_mod_p)
 
 
 PRIMES = [2, 3, 5]
 
 SURFACES = [("sphere", SPHERE), ("torus", TORUS),
             ("rp2", RP2), ("klein_bottle", KLEIN)]
-COMPLEXES = SURFACES + [("cp2", CP2)]
+COMPLEXES = SURFACES + [("cp2", CP2), ("s2_wedge_s4", S2_WEDGE_S4)]
 
 # every (complex, prime) pair, for the tests that hold in any characteristic.
 CUP_CASES = [
@@ -201,6 +202,17 @@ def test_cup_from_rep_square_generates_the_top_class_of_cp2(p):
     x = reps(cp, 2)[0]
 
     assert coefficients(cp, 2, x, 2, x) != (0,)
+
+
+@pytest.mark.parametrize("p", PRIMES)
+def test_cup_from_rep_square_vanishes_on_s2_wedge_s4(p):
+    # the opposite of CP^2 in the one product that separates them: a class
+    # pulled back from a wedge summand squares into that summand, and H^4(S^2)
+    # is zero, so the square of the H^2 generator dies.
+    cp = cup_product(S2_WEDGE_S4, p)
+    x = reps(cp, 2)[0]
+
+    assert coefficients(cp, 2, x, 2, x) == (0,)
 
 
 @pytest.mark.parametrize("name, faces, p", CUP_CASES)
@@ -508,8 +520,7 @@ def test_cohomology_products_is_indexed_by_the_generators(name, faces, p):
 
     assert cp.generators == tuple((d, i) for d in range(0, cp.K.dim + 1)
                                   for i in range(len(reps(cp, d))))
-    assert len(table) == len(cp.generators)
-    assert all(len(row) == len(cp.generators) for row in table)
+    assert table.shape == (len(cp.generators), len(cp.generators))
 
 
 @pytest.mark.parametrize("name, faces, p", CUP_CASES)
@@ -550,11 +561,61 @@ def test_cohomology_products_table_of_rp2_mod_2():
     cp = cup_product(RP2, 2)
 
     assert cp.generators == ((0, 0), (1, 0), (2, 0))
-    assert cp.cohomology_products() == (
-        ((0, (1,)), (1, (1,)), (2, (1,))),
-        ((1, (1,)), (2, (1,)), (3, (0,))),
-        ((2, (1,)), (3, (0,)), (4, (0,))),
-    )
+    table = cp.cohomology_products()
+
+    # a 2d array of entries, so the comparison is made on the entries themselves
+    # rather than on numpy's elementwise reading of ==.
+    assert table.shape == (3, 3)
+    assert table.tolist() == [
+        [(0, (1,)), (1, (1,)), (2, (1,))],
+        [(1, (1,)), (2, (1,)), (3, (0,))],
+        [(2, (1,)), (3, (0,)), (4, (0,))],
+    ]
+
+
+@pytest.mark.parametrize("p", PRIMES)
+def test_cohomology_products_table_of_s2_wedge_s4(p):
+    # H^*(S^2 v S^4) is Z[x, y]/(x^2, xy, y^2) with x in degree 2 and y in
+    # degree 4: every product of positive-degree classes vanishes, since it
+    # would have to live in a degree where the wedge summand it came from has
+    # no cohomology. so the table is the unit row and column and nothing else.
+    cp = cup_product(S2_WEDGE_S4, p)
+
+    assert cp.generators == ((0, 0), (2, 0), (4, 0))
+    assert cp.cohomology_products().tolist() == [
+        [(0, (1,)), (2, (1,)), (4, (1,))],
+        [(2, (1,)), (4, (0,)), (6, (0,))],
+        [(4, (1,)), (6, (0,)), (8, (0,))],
+    ]
+
+
+@pytest.mark.parametrize("p", PRIMES)
+def test_cohomology_products_separates_s2_wedge_s4_from_cp2(p):
+    # the two have the same cohomology groups in every degree, so nothing the
+    # betti numbers can see tells them apart. the ring does: x^2 generates
+    # H^4(CP^2) and vanishes on the wedge. this is the whole reason the cup
+    # product is worth computing, so the table had better register it.
+    wedge = cup_product(S2_WEDGE_S4, p)
+    cp2 = cup_product(CP2, p)
+
+    assert wedge.generators == cp2.generators
+    assert MOD_P_BETTI["s2_wedge_s4"](p) == MOD_P_BETTI["cp2"](p)
+
+    wedge_table = wedge.cohomology_products()
+    cp2_table = cp2.cohomology_products()
+
+    assert wedge_table.shape == cp2_table.shape
+    assert wedge_table.tolist() != cp2_table.tolist()
+
+    # and they differ in exactly one entry, the square of the degree 2 class.
+    square = wedge.generators.index((2, 0))
+    differ = [(a, b) for a in range(0, len(wedge.generators))
+              for b in range(0, len(wedge.generators))
+              if wedge_table[a][b] != cp2_table[a][b]]
+
+    assert differ == [(square, square)]
+    assert wedge_table[square][square] == (4, (0,))
+    assert cp2_table[square][square] != (4, (0,))
 
 
 @pytest.mark.parametrize("d", [-1, 3])

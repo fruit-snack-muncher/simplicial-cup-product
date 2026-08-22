@@ -1,5 +1,6 @@
 from simplicial_cup_product.simp_homology import SimpHomology
 from simplicial_cup_product.simplicial_complex import SimplicialComplex
+import itertools
 import numpy as np
 import pytest
 from sympy import GF, Matrix
@@ -48,6 +49,14 @@ CP2 = [(1, 2, 3, 7, 8), (1, 2, 3, 7, 9), (1, 2, 3, 8, 9),
        (2, 4, 5, 8, 9), (2, 4, 6, 7, 9), (2, 5, 6, 7, 8),
        (3, 4, 5, 7, 8), (3, 4, 6, 8, 9), (3, 5, 6, 7, 9),
        (4, 5, 7, 8, 9), (4, 6, 7, 8, 9), (5, 6, 7, 8, 9)]
+
+# S^2 v S^4: the boundary of the 3-simplex on {0, 1, 2, 3} and the boundary of
+# the 5-simplex on {0, 4, 5, 6, 7, 8}, meeting in the vertex 0 alone -- so the
+# union is connected and is exactly the wedge. Both spheres are vertex-minimal.
+# H_* = (Z, 0, Z, 0, Z), the same as CP^2's, which is the point of having it:
+# the two are told apart by their cup products and not by their homology.
+S2_WEDGE_S4 = SPHERE + [tuple(sorted(facet)) for facet
+                        in itertools.combinations((0, 4, 5, 6, 7, 8), 5)]
 
 # H_d(K; Z) for d = 0, 1, 2, each as (betti number, torsion coefficients).
 # All four surfaces are closed and connected, so H_0 = Z throughout, and
@@ -145,10 +154,12 @@ MOD_P_BETTI = {
     "rp2":          lambda p: (1, 1, 1) if p == 2 else (1, 0, 0),
     "klein_bottle": lambda p: (1, 2, 1) if p == 2 else (1, 1, 0),
     "cp2":          lambda p: (1, 0, 1, 0, 1),
+    "s2_wedge_s4":  lambda p: (1, 0, 1, 0, 1),
 }
 
 COMPLEXES = [("sphere", SPHERE), ("torus", TORUS), ("rp2", RP2),
-             ("klein_bottle", KLEIN), ("cp2", CP2)]
+             ("klein_bottle", KLEIN), ("cp2", CP2),
+             ("s2_wedge_s4", S2_WEDGE_S4)]
 
 # every (complex, prime) pair, carrying the mod p betti numbers expected of it.
 CYCLE_REPS = [

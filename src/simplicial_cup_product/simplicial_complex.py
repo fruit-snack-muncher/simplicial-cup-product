@@ -90,4 +90,9 @@ class SimplicialComplex:
         self._update_order_lookup()
         self._sort_all_simplices()
         self._update_dim()
+
+    def add_simplices_from(self, simplices: list) -> None:
+        """Add simplices from a list, in the order of the list."""
+        for simplex in simplices:
+            self.add_simplex(simplex)
     
